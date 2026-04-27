@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>루틴 대시보드</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f0; color: #1a1a1a; min-height: 100vh; }
+  .container { max-width: 680px; margin: 0 auto; padding: 2rem 1rem; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 1.5rem; }
+  .metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 1.5rem; }
+  .metric { background: white; border-radius: 10px; padding: 14px 16px; border: 0.5px solid #e0e0d8; }
+  .metric-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .metric-value { font-size: 24px; font-weight: 600; color: #1a1a1a; }
+  .card { background: white; border-radius: 12px; border: 0.5px solid #e0e0d8; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+  .section-title { font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 10px; }
+  .todo-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 0.5px solid #f0f0ec; }
+  .todo-item:last-child { border-bottom: none; }
+  .check-box { width: 20px; height: 20px; border-radius: 5px; border: 1.5px solid #ccc; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+  .check-box.done { background: #1D9E75; border-color: #1D9E75; }
+  .check-box.done::after { content: ''; display: block; width: 5px; height: 9px; border: 2px solid white; border-top: none; border-left: none; transform: rotate(45deg) translateY(-1px); }
+  .todo-label { font-size: 15px; flex: 1; }
+  .todo-label.done { text-decoration: line-through; color: #aaa; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 500; }
+  .badge-done { background: #E1F5EE; color: #0F6E56; }
+  .badge-pending { background: #f5f5f0; color: #888; }
+  .chart-wrap { position: relative; width: 100%; height: 220px; }
+  .empty { font-size: 14px; color: #aaa; text-align: center; padding: 2rem 0; line-height: 1.8; }
+  .loading { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #888; padding: 1rem 0; }
+  .spinner { width: 16px; height: 16px; border: 2px solid #eee; border-top-color: #1D9E75; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-box { background: #fff0f0; border: 0.5px solid #ffd0d0; border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #c00; margin-bottom: 1rem; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 7px 16px; border-radius: 8px; border: 0.5px solid #ddd; background: white; cursor: pointer; color: #444; }
+  .btn:hover { background: #f5f5f0; }
+  .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+  .legend { display: flex; gap: 16px; margin-bottom: 10px; font-size: 12px; color: #888; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 4px; }
+  .notion-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 7px 16px; border-radius: 8px; border: 0.5px solid #ddd; background: white; cursor: pointer; color: #666; text-decoration: none; }
+  .notion-btn:hover { background: #f5f5f0; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="top-bar">
+    <h1>루틴 대시보드</h1>
+    <button class="btn" onclick="loadData()">새로고침</button>
+  </div>
+
+  <div id="error-area"></div>
+
+  <div class="metric-row">
+    <div class="metric"><div class="metric-label">오늘 완료</div><div class="metric-value" id="m1">—</div></div>
+    <div class="metric"><div class="metric-label">오늘 전체</div><div class="metric-value" id="m2">—</div></div>
+    <div class="metric"><div class="metric-label">달성률</div><div class="metric-value" id="m3">—</div></div>
+  </div>
+
+  <div class="section-title">오늘의 루틴</div>
+  <div class="card" id="todo-card">
+    <div class="loading"><div class="spinner"></div>노션에서 불러오는 중...</div>
+  </div>
+
+  <div class="section-title">완료 통계 (최근 7일)</div>
+  <div class="card">
+    <div class="legend">
+      <span><span class="legend-dot" style="background:#1D9E75;"></span>완료</span>
+      <span><span class="legend-dot" style="background:#ccc;"></span>전체</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="statsChart" role="img" aria-label="최근 7일 루틴 완료 개수 선 그래프">일별 완료 항목 수 선 그래프</canvas>
+    </div>
+  </div>
+
+  <a class="notion-btn" href="https://www.notion.so/34f0947abbdf80e9ae23d9ece6fda7e4" target="_blank">노션에서 항목 추가하기 ↗</a>
+</div>
+
+<script>
+const TOKEN = 'ntn_W24910714551rIzgj15V0kUAI4f9c4KvUtQzwWT946y4vT';
+const DB_ID = '34f0947abbdf80e9ae23d9ece6fda7e4';
+let allPages = [];
+let chartInstance = null;
+
+function todayStr() { return new Date().toISOString().split('T')[0]; }
+function fmtDate(d) { return d ? d.split('T')[0] : ''; }
+function getLast7() {
+  return Array.from({length:7},(_,i)=>{ const d=new Date(); d.setDate(d.getDate()-(6-i)); return d.toISOString().split('T')[0]; });
+}
+
+async function queryNotion() {
+  const res = await fetch(`https://api.notion.com/v1/databases/${DB_ID}/query`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${TOKEN}`,
+      'Notion-Version': '2022-06-28',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ page_size: 100 })
+  });
+  if (!res.ok) throw new Error(res.status);
+  return res.json();
+}
+
+async function patchNotion(pageId, checked) {
+  await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${TOKEN}`,
+      'Notion-Version': '2022-06-28',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ properties: { '완료': { checkbox: checked } } })
+  });
+}
+
+function renderMetrics(pages) {
+  const t = todayStr();
+  const tp = pages.filter(p => fmtDate(p.properties['날짜']?.date?.start) === t);
+  const done = tp.filter(p => p.properties['완료']?.checkbox).length;
+  const total = tp.length;
+  document.getElementById('m1').textContent = done;
+  document.getElementById('m2').textContent = total;
+  document.getElementById('m3').textContent = total > 0 ? Math.round(done/total*100) + '%' : '—';
+}
+
+function renderTodo(pages) {
+  const t = todayStr();
+  const tp = pages.filter(p => fmtDate(p.properties['날짜']?.date?.start) === t);
+  const card = document.getElementById('todo-card');
+  if (!tp.length) {
+    card.innerHTML = '<div class="empty">오늘 등록된 루틴이 없어요<br><span style="font-size:12px;">노션에서 오늘 날짜로 항목을 추가해보세요</span></div>';
+    return;
+  }
+  card.innerHTML = tp.map(p => {
+    const name = p.properties['이름']?.title?.[0]?.plain_text || '(이름 없음)';
+    const done = p.properties['완료']?.checkbox || false;
+    return `<div class="todo-item">
+      <div class="check-box ${done?'done':''}" onclick="toggle('${p.id}',${!done},this)"></div>
+      <span class="todo-label ${done?'done':''}">${name}</span>
+      <span class="badge ${done?'badge-done':'badge-pending'}">${done?'완료':'미완료'}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderChart(pages) {
+  const days = getLast7();
+  const labels = days.map(d => { const [,m,dd]=d.split('-'); return `${parseInt(m)}/${parseInt(dd)}`; });
+  const done = days.map(day => pages.filter(p => fmtDate(p.properties['날짜']?.date?.start)===day && p.properties['완료']?.checkbox).length);
+  const total = days.map(day => pages.filter(p => fmtDate(p.properties['날짜']?.date?.start)===day).length);
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(document.getElementById('statsChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label:'완료', data:done, borderColor:'#1D9E75', backgroundColor:'rgba(29,158,117,0.08)', borderWidth:2, pointBackgroundColor:'#1D9E75', pointRadius:4, fill:true, tension:0.35 },
+        { label:'전체', data:total, borderColor:'#ccc', borderWidth:2, pointBackgroundColor:'#ccc', pointRadius:4, fill:false, tension:0.35, borderDash:[4,3] }
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{
+        y:{ beginAtZero:true, ticks:{ stepSize:1, color:'#888' }, grid:{ color:'rgba(0,0,0,0.05)' } },
+        x:{ ticks:{ color:'#888', autoSkip:false }, grid:{ display:false } }
+      }
+    }
+  });
+}
+
+async function toggle(pageId, checked, el) {
+  const item = el.closest('.todo-item');
+  const label = item.querySelector('.todo-label');
+  const badge = item.querySelector('.badge');
+  el.classList.toggle('done', checked);
+  label.classList.toggle('done', checked);
+  badge.className = `badge ${checked?'badge-done':'badge-pending'}`;
+  badge.textContent = checked ? '완료' : '미완료';
+  const page = allPages.find(p => p.id === pageId);
+  if (page) page.properties['완료'].checkbox = checked;
+  renderMetrics(allPages);
+  renderChart(allPages);
+  try { await patchNotion(pageId, checked); } catch(e) { console.error(e); }
+}
+
+async function loadData() {
+  document.getElementById('error-area').innerHTML = '';
+  document.getElementById('todo-card').innerHTML = '<div class="loading"><div class="spinner"></div>불러오는 중...</div>';
+  try {
+    const data = await queryNotion();
+    allPages = data.results || [];
+    renderMetrics(allPages);
+    renderTodo(allPages);
+    renderChart(allPages);
+  } catch(e) {
+    document.getElementById('error-area').innerHTML = `<div class="error-box">노션 연결 실패 (${e.message})</div>`;
+    document.getElementById('todo-card').innerHTML = '<div class="empty">데이터를 불러올 수 없어요</div>';
+  }
+}
+
+loadData();
+</script>
+</body>
+</html>
